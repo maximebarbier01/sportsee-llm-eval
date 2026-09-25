@@ -6,10 +6,12 @@ from pathlib import Path
 import pytest
 
 PROTOTYPE_DIR = Path(__file__).resolve().parents[1] / "prototype"
-sys.path.insert(0, str(PROTOTYPE_DIR))  # rend le package `utils` du prototype importable
+sys.path.insert(
+    0, str(PROTOTYPE_DIR)
+)  # rend le package `utils` du prototype importable
 
-from utils.config import MISTRAL_API_KEY  # noqa: E402
-from utils.vector_store import VectorStoreManager  # noqa: E402
+from utils.config import MISTRAL_API_KEY
+from utils.vector_store import VectorStoreManager
 
 QUESTION = "Quel joueur a le meilleur pourcentage à 3 points ?"
 
