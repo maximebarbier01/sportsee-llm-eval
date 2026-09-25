@@ -16,10 +16,13 @@ if not MISTRAL_API_KEY:
 EMBEDDING_MODEL = "mistral-embed"
 MODEL_NAME = "mistral-small-latest" # Ou un autre modèle comme mistral-large-latest
 
+# [PORTAGE] Chemins ancrés à la racine du projet (le prototype utilisait des chemins relatifs au répertoire courant)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # --- Configuration de l'Indexation ---
 # INPUT_DATA_URL = os.getenv("INPUT_DATA_URL") # Décommentez si vous utilisez une URL
-INPUT_DIR = "inputs"                # Dossier pour les données sources après extraction
-VECTOR_DB_DIR = "vector_db"         # Dossier pour stocker l'index Faiss et les chunks
+INPUT_DIR = os.path.join(PROJECT_ROOT, "data", "raw")  # [PORTAGE] ex "inputs"                # Dossier pour les données sources après extraction
+VECTOR_DB_DIR = os.path.join(PROJECT_ROOT, "data", "vector_store", "prototype")  # [PORTAGE] ex "vector_db"         # Dossier pour stocker l'index Faiss et les chunks
 FAISS_INDEX_FILE = os.path.join(VECTOR_DB_DIR, "faiss_index.idx")
 DOCUMENT_CHUNKS_FILE = os.path.join(VECTOR_DB_DIR, "document_chunks.pkl")
 
@@ -31,7 +34,7 @@ EMBEDDING_BATCH_SIZE = 32           # Taille des lots pour l'API d'embedding
 SEARCH_K = 5                        # Nombre de documents à récupérer par défaut
 
 # --- Configuration de la Base de Données ---
-DATABASE_DIR = "database"
+DATABASE_DIR = os.path.join(PROJECT_ROOT, "data", "database")  # [PORTAGE] ex "database"
 DATABASE_FILE = os.path.join(DATABASE_DIR, "interactions.db")
 DATABASE_URL = f"sqlite:///{DATABASE_FILE}" # URL pour SQLAlchemy
 
