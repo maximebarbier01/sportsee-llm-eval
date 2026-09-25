@@ -1,0 +1,25 @@
+# Env
+.venv/
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Données (le club fournit ses propres fichiers)
+data/raw/*
+data/processed/*
+data/vector_store/*
+data/database/*
+!data/**/.gitkeep
+
+# Logfire
+.logfire/
+
+# Logs & IDE (repris du .gitignore du prototype)
+*.log
+logs/
+.DS_Store
+.idea/
+.vscode/

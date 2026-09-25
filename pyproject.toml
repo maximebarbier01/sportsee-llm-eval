@@ -1,0 +1,51 @@
+[project]
+name = "sportsee-llm-eval"
+version = "0.1.0"
+description = "Évaluation et extension d'un assistant RAG pour SportSee"
+authors = [
+    {name = "Maxime Barbier",email = "maximebarbier57@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "langchain (>=1.4.2,<2.0.0)",
+    "langchain-community (==0.4.1)",
+    "langchain-mistralai (>=1.1.6,<2.0.0)",
+    "mistralai (>=2.10.1,<3.0.0)",
+    "faiss-cpu (>=1.15.1,<2.0.0)",
+    "pydantic (>=2.13.5,<3.0.0)",
+    "logfire (>=5.1.0,<6.0.0)",
+    "pandas (>=3.0.6,<4.0.0)",
+    "openpyxl (>=3.1.5,<4.0.0)",
+    "sqlalchemy (>=2.1.0,<3.0.0)",
+    "python-dotenv (>=1.2.3,<2.0.0)",
+    "pydantic-ai-slim[logfire,mistral] (>=2.50.0,<3.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+eval = [
+    "ragas (>=0.4.3,<0.5.0)",
+    "datasets (>=5.0.1,<6.0.0)",
+    "matplotlib (>=3.11.2,<4.0.0)",
+    "instructor (>=1.14)"
+]
+dev = [
+    "pytest (>=9.1.1,<10.0.0)",
+    "ruff (>=0.16.9,<0.17.0)",
+    "black (>=26.5.1,<27.0.0)"
+]
+notebook = [
+    "ipykernel (>=7.3.0,<8.0.0)",
+    "jupyter (>=1.1.1,<2.0.0)"
+]
+ingestion = [
+    "pymupdf (>=1.28.2,<2.0.0)",
+    "easyocr (>=1.7.2,<2.0.0)",
+    "pypdf (>=6.19.0,<7.0.0)",
+    "python-docx (>=1.2.0,<2.0.0)"
+]
