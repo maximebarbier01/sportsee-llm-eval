@@ -12,6 +12,7 @@ data/raw/*
 data/processed/*
 data/vector_store/*
 data/database/*
+data/interim/*
 !data/**/.gitkeep
 
 # Logfire

@@ -103,6 +103,10 @@ def get_runner(system: str):
         from prototype_runner import PrototypeRunner
 
         return PrototypeRunner()
+    if system == "rag_v2":
+        from rag_v2_runner import RagV2Runner
+
+        return RagV2Runner()
     raise ValueError(f"Système inconnu : {system}")
 
 
@@ -347,7 +351,10 @@ def parse_args() -> argparse.Namespace:
         description="Évaluation RAGAS d'un système RAG SportSee"
     )
     parser.add_argument(
-        "--system", default="prototype", choices=["prototype"], help="Système à évaluer"
+        "--system",
+        default="prototype",
+        choices=["prototype", "rag_v2"],
+        help="Système à évaluer",
     )
     parser.add_argument(
         "--questions",
