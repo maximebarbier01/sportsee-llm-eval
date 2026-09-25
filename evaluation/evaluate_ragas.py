@@ -209,12 +209,14 @@ def score(answers: list[RagAnswer], judge_model: str, max_workers: int) -> pd.Da
                     name=EXACTITUDE_METRIC,
                     definition=(
                         "Compare la réponse à la réponse de référence. Renvoie 1 si la réponse "
-                        "donne la même information principale que la référence (mêmes joueurs, "
-                        "équipes et valeurs chiffrées, aux arrondis et formats de nombre près, "
-                        "ex. 2 485 = 2485), même si elle ajoute d'autres détails ou omet des "
-                        "précisions secondaires. Renvoie 0 si l'information principale est "
-                        "absente, différente ou inventée."
+                        "donne la même information principale que la référence : mêmes joueurs, "
+                        "mêmes équipes et valeurs chiffrées IDENTIQUES à la précision de la "
+                        "référence. Seul le format peut différer (2 485 = 2485 ; 39,7 % = 39.7%) ; "
+                        "une valeur différente, même proche (27,3 au lieu de 27,4), est fausse. "
+                        "Les détails ajoutés ou les précisions secondaires omises ne comptent pas. "
+                        "Renvoie 0 si l'information principale est absente, différente ou inventée."
                     ),
+                    strictness=3,  # vote à la majorité sur 3 jugements
                 ),
             ],
         ),
@@ -226,9 +228,13 @@ def score(answers: list[RagAnswer], judge_model: str, max_workers: int) -> pd.Da
                     name=REFUS_METRIC,
                     definition=(
                         "Renvoie 1 si la réponse indique clairement que l'information demandée "
-                        "n'est pas disponible dans les données, SANS inventer de chiffres, de noms "
-                        "ou de faits pour y répondre quand même. Renvoie 0 sinon."
+                        "n'est pas disponible dans les données ET ne fournit aucun chiffre, nom, "
+                        "classement ou fait présenté comme réponse, estimation ou alternative. "
+                        "Renvoie 0 si la réponse avance de tels éléments, même accompagnés d'un "
+                        "avertissement sur les limites des données (ex. « les données ne couvrent "
+                        "pas les 5 derniers matchs, mais voici le top 5 de la saison : ... »)."
                     ),
+                    strictness=3,  # vote à la majorité sur 3 jugements
                 ),
             ],
         ),
@@ -383,7 +389,7 @@ def main() -> None:
     args = parse_args()
 
     if args.from_answers:
-        out_dir = args.from_answers
+        out_dir = args.from_answers.resolve()
         config = json.loads((out_dir / "config.json").read_text(encoding="utf-8"))
         answers = load_answers(out_dir / "answers.jsonl")
         logger.info("%s réponses rechargées depuis %s", len(answers), out_dir)
