@@ -1,0 +1,207 @@
+{
+  "version": "v1",
+  "statut": "validé et gelé le 2026-09-25 - ne plus modifier (comparabilité avant/après)",
+  "sources": {
+    "excel": "data/raw/regular NBA.xlsx (feuilles 'Données NBA', 'Equipe', 'Dictionnaire des données', 'Analyse')",
+    "reddit": "data/raw/Reddit 1-4.pdf (captures de threads r/nba, OCR)"
+  },
+  "notes": [
+    "Les colonnes PTS, REB, AST, 3PM, 3PA... de 'Données NBA' sont des TOTAUX DE SAISON (ex. SGA : 2485 PTS en 76 matchs), contrairement au dictionnaire des données qui les décrit comme des moyennes par match. Seule 'Min' est une moyenne par match.",
+    "La colonne 3PM est mal lue par Excel comme l'heure 15:00:00 ; les calculs l'utilisent sous le nom 3PM.",
+    "Chaque joueur n'apparaît qu'une fois, sous une seule équipe : les totaux par équipe sont des sommes de joueurs, pas les stats officielles d'équipe."
+  ],
+  "questions": [
+    {
+      "id": "S01", "categorie": "simple",
+      "question": "Combien de points Shai Gilgeous-Alexander a-t-il marqués sur la saison régulière ?",
+      "ground_truth": "Shai Gilgeous-Alexander (OKC) a marqué 2485 points sur la saison régulière, en 76 matchs joués.",
+      "source": "excel:Données NBA", "calcul": "df[df.Player=='Shai Gilgeous-Alexander'][['PTS','GP']]"
+    },
+    {
+      "id": "S02", "categorie": "simple",
+      "question": "Quel est le pourcentage de réussite à 3 points de Stephen Curry cette saison ?",
+      "ground_truth": "Stephen Curry (GSW) a un pourcentage de réussite à 3 points de 39,7 % (308 tirs réussis sur 784 tentés).",
+      "source": "excel:Données NBA", "calcul": "df[df.Player=='Stephen Curry'][['3P%','3PM','3PA']]"
+    },
+    {
+      "id": "S03", "categorie": "simple",
+      "question": "Quel joueur a marqué le plus de points sur la saison ?",
+      "ground_truth": "Shai Gilgeous-Alexander (OKC) est le meilleur marqueur avec 2485 points, devant Anthony Edwards (MIN, 2180) et Nikola Jokić (DEN, 2072).",
+      "source": "excel:Données NBA", "calcul": "df.nlargest(3,'PTS')"
+    },
+    {
+      "id": "S04", "categorie": "simple",
+      "question": "Quel joueur a pris le plus de rebonds cette saison ?",
+      "ground_truth": "Ivica Zubac (LAC) a pris le plus de rebonds avec 1008 rebonds, devant Domantas Sabonis (SAC, 973) et Karl-Anthony Towns (NYK, 922).",
+      "source": "excel:Données NBA", "calcul": "df.nlargest(3,'REB')"
+    },
+    {
+      "id": "S05", "categorie": "simple",
+      "question": "Combien de triple-doubles Nikola Jokić a-t-il réalisés cette saison ?",
+      "ground_truth": "Nikola Jokić (DEN) a réalisé 34 triple-doubles cette saison.",
+      "source": "excel:Données NBA", "calcul": "df[df.Player=='Nikola Jokić']['TD3']"
+    },
+    {
+      "id": "S06", "categorie": "simple",
+      "question": "Quel est le nom complet de l'équipe dont le code est MIN ?",
+      "ground_truth": "Le code MIN correspond aux Minnesota Timberwolves.",
+      "source": "excel:Equipe", "calcul": "teams.loc['MIN']"
+    },
+    {
+      "id": "S07", "categorie": "simple",
+      "question": "Que mesure la statistique PIE ?",
+      "ground_truth": "PIE (Player Impact Estimate) est une évaluation globale de l'impact d'un joueur.",
+      "source": "excel:Dictionnaire des données", "calcul": "lecture directe"
+    },
+    {
+      "id": "C01", "categorie": "complexe",
+      "question": "Parmi les joueurs ayant tenté au moins 300 tirs à 3 points, qui a le meilleur pourcentage de réussite à 3 points ?",
+      "ground_truth": "Zach LaVine (SAC) a le meilleur pourcentage à 3 points parmi les joueurs à 300 tentatives ou plus : 44,6 % (237/533), devant Taurean Prince (MIL, 43,9 %) et Harrison Barnes (SAS, 43,3 %).",
+      "source": "excel:Données NBA", "calcul": "df[df['3PA']>=300].nlargest(3,'3P%')"
+    },
+    {
+      "id": "C02", "categorie": "complexe",
+      "question": "Quelle équipe totalise le plus de points marqués par ses joueurs sur la saison ?",
+      "ground_truth": "Les Detroit Pistons (DET) totalisent le plus de points avec 10292 points cumulés par leurs 19 joueurs, devant les San Antonio Spurs (10198) et les Cleveland Cavaliers (10180).",
+      "source": "excel:Données NBA", "calcul": "df.groupby('Team').PTS.sum().nlargest(3)"
+    },
+    {
+      "id": "C03", "categorie": "complexe",
+      "question": "Compare le nombre de rebonds de Nikola Jokić et de Giannis Antetokounmpo cette saison.",
+      "ground_truth": "Nikola Jokić a pris 889 rebonds en 70 matchs, contre 797 rebonds en 67 matchs pour Giannis Antetokounmpo, soit 92 rebonds de plus pour Jokić.",
+      "source": "excel:Données NBA", "calcul": "df[df.Player.isin([...])][['REB','GP']]"
+    },
+    {
+      "id": "C04", "categorie": "complexe",
+      "question": "Quel est l'âge moyen des joueurs des Los Angeles Lakers ?",
+      "ground_truth": "L'âge moyen des 20 joueurs des Los Angeles Lakers (LAL) est de 27,4 ans.",
+      "source": "excel:Données NBA", "calcul": "df[df.Team=='LAL'].Age.mean()"
+    },
+    {
+      "id": "C05", "categorie": "complexe",
+      "question": "Qui est le meilleur passeur des Boston Celtics cette saison ?",
+      "ground_truth": "Jayson Tatum est le meilleur passeur des Boston Celtics avec 432 passes décisives, devant Derrick White (365).",
+      "source": "excel:Données NBA", "calcul": "df[df.Team=='BOS'].nlargest(2,'AST')"
+    },
+    {
+      "id": "C06", "categorie": "complexe",
+      "question": "Quels sont les trois meilleurs marqueurs des New York Knicks ?",
+      "ground_truth": "Les trois meilleurs marqueurs des Knicks sont Karl-Anthony Towns (1757 points), Jalen Brunson (1690) et Mikal Bridges (1443).",
+      "source": "excel:Données NBA", "calcul": "df[df.Team=='NYK'].nlargest(3,'PTS')"
+    },
+    {
+      "id": "C07", "categorie": "complexe",
+      "question": "Combien de joueurs ont réalisé au moins un triple-double cette saison, et qui en a le plus ?",
+      "ground_truth": "43 joueurs ont réalisé au moins un triple-double. Nikola Jokić en a le plus (34), devant Giannis Antetokounmpo (11) et LeBron James (10).",
+      "source": "excel:Données NBA", "calcul": "(df.TD3>=1).sum(); df.nlargest(3,'TD3')"
+    },
+    {
+      "id": "B01", "categorie": "bruitee",
+      "question": "c ki le meilleur marqueur de la saizon ??",
+      "ground_truth": "Shai Gilgeous-Alexander (OKC) est le meilleur marqueur de la saison avec 2485 points.",
+      "source": "excel:Données NBA", "calcul": "= S03 (fautes d'orthographe, langage SMS)"
+    },
+    {
+      "id": "B02", "categorie": "bruitee",
+      "question": "3pt% de steph curry stp",
+      "ground_truth": "Stephen Curry a un pourcentage de réussite à 3 points de 39,7 % cette saison.",
+      "source": "excel:Données NBA", "calcul": "= S02 (surnom, abréviation, pas de verbe)"
+    },
+    {
+      "id": "B03", "categorie": "bruitee",
+      "question": "jokic il a pris combien de rebonds cette année",
+      "ground_truth": "Nikola Jokić a pris 889 rebonds cette saison.",
+      "source": "excel:Données NBA", "calcul": "df[df.Player=='Nikola Jokić'].REB (nom sans accent, oral)"
+    },
+    {
+      "id": "B04", "categorie": "bruitee",
+      "question": "Who is the best scorer des Lakers ?",
+      "ground_truth": "LeBron James est le meilleur marqueur des Lakers avec 1708 points, devant Austin Reaves (1475).",
+      "source": "excel:Données NBA", "calcul": "df[df.Team=='LAL'].nlargest(2,'PTS') (franglais)"
+    },
+    {
+      "id": "B05", "categorie": "bruitee",
+      "question": "Combien de points pour Giannis Antetokoumpo ?",
+      "ground_truth": "Giannis Antetokounmpo (MIL) a marqué 2037 points cette saison.",
+      "source": "excel:Données NBA", "calcul": "df[df.Player=='Giannis Antetokounmpo'].PTS (nom mal orthographié)"
+    },
+    {
+      "id": "T01", "categorie": "texte",
+      "question": "D'après les discussions Reddit, quel joueur est présenté comme la première option offensive la plus efficace de l'histoire des playoffs ?",
+      "ground_truth": "Selon un thread r/nba, Reggie Miller est présenté comme la première option offensive la plus efficace de l'histoire des playoffs, sur la base des points totaux en playoffs et de l'efficacité relative à son époque (rTS).",
+      "source": "reddit:Reddit 3.pdf", "calcul": "titre et post du thread"
+    },
+    {
+      "id": "T02", "categorie": "texte",
+      "question": "Selon le thread Reddit sur Reggie Miller, quel joueur s'approche le plus de son efficacité en playoffs ?",
+      "ground_truth": "Kawhi Leonard est le seul à s'en approcher, avec 3133 points en playoffs et un rTS de 112.",
+      "source": "reddit:Reddit 3.pdf", "calcul": "section 'Some takeaways' + tableau"
+    },
+    {
+      "id": "T03", "categorie": "texte",
+      "question": "Quel était le rTS de Reggie Miller en playoffs sur ses années de prime (1991-2002) ?",
+      "ground_truth": "Sur ses années de prime (1991-2002), Reggie Miller avait un rTS de 115 en playoffs, pour environ 24 points par match sur plus de 100 matchs.",
+      "source": "reddit:Reddit 3.pdf", "calcul": "section 'Some takeaways', point 2"
+    },
+    {
+      "id": "T04", "categorie": "texte",
+      "question": "Quels jeunes joueurs du Orlando Magic sont cités comme un duo impressionnant dans les playoffs sur Reddit ?",
+      "ground_truth": "Paolo Banchero et Franz Wagner sont cités comme un duo d'ailiers impressionnant, qui a poussé le champion en titre dans ses retranchements malgré une mauvaise adresse au tir.",
+      "source": "reddit:Reddit 1.pdf", "calcul": "post initial du thread"
+    },
+    {
+      "id": "T05", "categorie": "texte",
+      "question": "D'après Reddit, quelle équipe NBA a atteint les Finales sans avoir eu l'avantage du terrain lors des trois premiers tours ?",
+      "ground_truth": "D'après les commentaires, aucune dans la NBA moderne : six équipes classées en dessous de la 4e place ont atteint les Finales, mais aucune n'y a eu l'avantage du terrain.",
+      "source": "reddit:Reddit 4.pdf", "calcul": "commentaire le plus voté"
+    },
+    {
+      "id": "T06", "categorie": "texte",
+      "question": "Pourquoi certains fans sur Reddit trouvent-ils qu'une finale entre les deux meilleures équipes statistiques est considérée comme ennuyeuse ?",
+      "ground_truth": "Les fans expliquent que beaucoup de supporters préfèrent le concours de popularité au basket lui-même, que la NBA est une ligue de superstars où les médias mettent en avant les grands noms et les grands marchés, et que la NBA a du mal à promouvoir ce type d'affiche.",
+      "source": "reddit:Reddit 2.pdf", "calcul": "synthèse du post et des commentaires"
+    },
+    {
+      "id": "M01", "categorie": "mixte",
+      "question": "Sur Reddit, des fans sont impressionnés par Julius Randle en playoffs. Quelles étaient ses statistiques en saison régulière ?",
+      "ground_truth": "Julius Randle (MIN) a marqué 1290 points, pris 490 rebonds et délivré 324 passes décisives en 69 matchs de saison régulière.",
+      "source": "reddit:Reddit 1.pdf + excel:Données NBA", "calcul": "df[df.Player=='Julius Randle'][['PTS','REB','AST','GP']]"
+    },
+    {
+      "id": "M02", "categorie": "mixte",
+      "question": "Le duo Paolo Banchero / Franz Wagner est salué sur Reddit. Lequel des deux a marqué le plus de points en saison régulière ?",
+      "ground_truth": "Franz Wagner a marqué plus de points (1452 en 60 matchs) que Paolo Banchero (1191 en 46 matchs).",
+      "source": "reddit:Reddit 1.pdf + excel:Données NBA", "calcul": "df[df.Team=='ORL'] filtré sur les deux joueurs"
+    },
+    {
+      "id": "M03", "categorie": "mixte",
+      "question": "Parmi les joueurs actifs cités dans le classement Reddit des premières options (Kawhi Leonard, Stephen Curry, Nikola Jokić, Giannis Antetokounmpo, LeBron James, James Harden, Kevin Durant), lequel a le meilleur True Shooting % cette saison ?",
+      "ground_truth": "Nikola Jokić a le meilleur True Shooting % cette saison avec 66,3 %, devant Kevin Durant (64,2 %) et Giannis Antetokounmpo (62,5 %).",
+      "source": "reddit:Reddit 3.pdf + excel:Données NBA", "calcul": "df[df.Player.isin([...])].nlargest(3,'TS%')"
+    },
+    {
+      "id": "H01", "categorie": "hors_couverture",
+      "question": "Quel joueur a le meilleur pourcentage de réussite à 3 points sur les 5 derniers matchs ?",
+      "ground_truth": "Cette information n'est pas disponible : les données ne contiennent que des totaux de saison par joueur, pas de statistiques match par match.",
+      "source": "aucune", "calcul": "comportement attendu : refus argumenté, pas d'invention"
+    },
+    {
+      "id": "H02", "categorie": "hors_couverture",
+      "question": "Compare les statistiques de rebonds de l'équipe à domicile et à l'extérieur.",
+      "ground_truth": "Cette information n'est pas disponible : les données ne distinguent pas les matchs à domicile et à l'extérieur.",
+      "source": "aucune", "calcul": "comportement attendu : refus argumenté, pas d'invention"
+    },
+    {
+      "id": "H03", "categorie": "hors_couverture",
+      "question": "Quel est le salaire de LeBron James ?",
+      "ground_truth": "Cette information n'est pas disponible dans les données (aucune donnée salariale).",
+      "source": "aucune", "calcul": "comportement attendu : refus argumenté, pas d'invention"
+    },
+    {
+      "id": "H04", "categorie": "hors_couverture",
+      "question": "Quelle équipe a remporté les Finales NBA 2025 ?",
+      "ground_truth": "Cette information n'est pas disponible dans les données : les statistiques couvrent la saison régulière et les discussions Reddit datent d'avant la fin des Finales (12/06/2025).",
+      "source": "aucune", "calcul": "comportement attendu : refus argumenté, pas d'invention"
+    }
+  ]
+}
