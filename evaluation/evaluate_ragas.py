@@ -31,6 +31,7 @@ DEFAULT_QUESTIONS = EVAL_DIR / "questions" / "questions_v1.json"
 RESULTS_DIR = EVAL_DIR / "results"
 
 sys.path.insert(0, str(EVAL_DIR))
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 load_dotenv(PROJECT_ROOT / ".env")
 os.environ.setdefault("RAGAS_DO_NOT_TRACK", "true")  # pas de télémétrie ragas
 
@@ -40,6 +41,7 @@ os.environ.setdefault("RAGAS_DO_NOT_TRACK", "true")  # pas de télémétrie raga
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=r".*ragas.*")
 warnings.filterwarnings("ignore", message=r".*langchain-community.*sunset.*")
 
+import logfire
 import ragas
 from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
 from ragas import EvaluationDataset, RunConfig, SingleTurnSample, evaluate
@@ -54,6 +56,8 @@ from ragas.metrics import (
     LLMContextRecall,
 )
 from schemas import Question, QuestionSet, RagAnswer
+
+from sportsee_llm_eval.observability.logfire_setup import setup_logfire
 
 logger = logging.getLogger("evaluate_ragas")
 
@@ -117,7 +121,13 @@ def generate_answers(
     with answers_path.open("w", encoding="utf-8") as f:
         for i, q in enumerate(questions, start=1):
             start = time.perf_counter()
-            output = runner.answer(q.question)
+            with logfire.span(
+                "évaluation {question_id}",
+                question_id=q.id,
+                categorie=q.categorie,
+                systeme=runner.name,
+            ):
+                output = runner.answer(q.question)
             answer = RagAnswer(
                 id=q.id,
                 categorie=q.categorie,
@@ -394,6 +404,7 @@ def main() -> None:
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
     args = parse_args()
+    setup_logfire(service_name="sportsee-eval")
 
     if args.from_answers:
         out_dir = args.from_answers.resolve()
