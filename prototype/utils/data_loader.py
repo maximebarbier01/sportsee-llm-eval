@@ -78,7 +78,7 @@ def extract_text_from_pdf_with_ocr(file_path: str) -> Optional[str]:
 def extract_text_from_pdf(file_path: str) -> Optional[str]:
     """Extrait le texte d'un fichier PDF, avec fallback OCR si peu de texte est trouvé."""
     try:
-        from PyPDF2 import PdfReader
+        from pypdf import PdfReader  # [PORTAGE] ex PyPDF2 (abandonné, même API)
         reader = PdfReader(file_path)
         text = "".join(page.extract_text() + "\n" for page in reader.pages if page.extract_text())
         
