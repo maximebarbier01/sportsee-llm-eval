@@ -19,11 +19,13 @@ import json
 import logging
 from pathlib import Path
 
+import logfire
 from dotenv import load_dotenv
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_mistralai import MistralAIEmbeddings
 
+from sportsee_llm_eval.observability.logfire_setup import setup_logfire
 from sportsee_llm_eval.preparation.documents import build_excel_documents
 from sportsee_llm_eval.preparation.excel import (
     PROCESSED_DIR,
@@ -44,10 +46,15 @@ EMBEDDING_MODEL = "mistral-embed"
 
 
 def build_documents(raw_excel: Path = RAW_EXCEL) -> list[IndexedDocument]:
-    documents = build_excel_documents(
-        read_players(raw_excel), read_teams(raw_excel), read_dictionary(raw_excel)
-    )
-    documents += build_reddit_documents()
+    with logfire.span("excel : lecture, validation Pydantic, fiches") as span:
+        excel_docs = build_excel_documents(
+            read_players(raw_excel), read_teams(raw_excel), read_dictionary(raw_excel)
+        )
+        span.set_attribute("documents", len(excel_docs))
+    with logfire.span("reddit : OCR (cache), nettoyage, découpage") as span:
+        reddit_docs = build_reddit_documents()
+        span.set_attribute("documents", len(reddit_docs))
+    documents = excel_docs + reddit_docs
     ids = [d.doc_id for d in documents]
     duplicates = [i for i, n in collections.Counter(ids).items() if n > 1]
     if duplicates:
@@ -68,9 +75,16 @@ def get_embeddings() -> MistralAIEmbeddings:
 def build_index(
     index_dir: Path = INDEX_DIR, documents_file: Path = DOCUMENTS_FILE
 ) -> FAISS:
+    setup_logfire(service_name="sportsee-pipeline")
+    with logfire.span("pipeline de préparation rag_v2"):
+        return _build_index(index_dir, documents_file)
+
+
+def _build_index(index_dir: Path, documents_file: Path) -> FAISS:
     documents = build_documents()
     counts = collections.Counter(d.source_type for d in documents)
     logger.info("%s documents validés : %s", len(documents), dict(counts))
+    logfire.info("documents validés", total=len(documents), par_type=dict(counts))
 
     documents_file.parent.mkdir(parents=True, exist_ok=True)
     with documents_file.open("w", encoding="utf-8") as f:
@@ -78,7 +92,11 @@ def build_index(
             f.write(d.model_dump_json() + "\n")
 
     logger.info("Embeddings %s et index FAISS...", EMBEDDING_MODEL)
-    store = FAISS.from_documents([to_langchain(d) for d in documents], get_embeddings())
+    with logfire.span("embeddings et index FAISS", modele=EMBEDDING_MODEL) as span:
+        store = FAISS.from_documents(
+            [to_langchain(d) for d in documents], get_embeddings()
+        )
+        span.set_attribute("vecteurs", store.index.ntotal)
     index_dir.mkdir(parents=True, exist_ok=True)
     store.save_local(str(index_dir))
     (index_dir / "manifest.json").write_text(
