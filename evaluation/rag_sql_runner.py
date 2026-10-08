@@ -27,6 +27,9 @@ class RagSqlRunner:
             "interroger_base_statistiques (LangChain SQL, few-shot, lecture seule)",
         }
 
+    def database_counts(self) -> dict:
+        return self.agent.sql.fingerprint()
+
     def answer(self, question: str) -> RagOutput:
         response, deps = self.agent.ask(question)
         # contexte RAGAS = résultats d'outils réellement vus par le modèle (documents + SQL)
@@ -34,4 +37,6 @@ class RagSqlRunner:
             answer=response.reponse,
             contexts=deps.contexts,
             retrieval_empty=not deps.contexts,
+            information_disponible=response.information_disponible,
+            tools_called=deps.tools_called,
         )
