@@ -49,3 +49,7 @@ ingestion = [
     "pypdf (>=6.19.0,<7.0.0)",
     "python-docx (>=1.2.0,<2.0.0)"
 ]
+
+[tool.logfire]
+# tests et scripts sans configuration Logfire : pas d'avertissement
+ignore_no_config = true
