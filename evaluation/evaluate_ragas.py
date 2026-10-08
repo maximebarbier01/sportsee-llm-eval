@@ -111,6 +111,10 @@ def get_runner(system: str):
         from rag_v2_runner import RagV2Runner
 
         return RagV2Runner()
+    if system == "rag_sql":
+        from rag_sql_runner import RagSqlRunner
+
+        return RagSqlRunner()
     raise ValueError(f"Système inconnu : {system}")
 
 
@@ -331,7 +335,7 @@ def write_outputs(out_dir: Path, scores: pd.DataFrame, config: dict) -> None:
         f"- Questions : {len(scores)} ({config['questions_file']})",
         f"- Système : modèle `{config['system']['model']}`, température {config['system']['temperature']}, k={config['system']['k']}",
         f"- Juge : `{config['judge_model']}` + embeddings `mistral-embed`, ragas {config['ragas_version']}",
-        f"- Recherches vides (erreur API persistante) : {n_empty}",
+        f"- Questions sans contexte (aucun outil appelé ou erreur API) : {n_empty}",
         f"- Questions sans aucun score (échec du juge) : {n_errors}",
         "",
         "## Scores moyens par catégorie",
@@ -363,7 +367,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--system",
         default="prototype",
-        choices=["prototype", "rag_v2"],
+        choices=["prototype", "rag_v2", "rag_sql"],
         help="Système à évaluer",
     )
     parser.add_argument(

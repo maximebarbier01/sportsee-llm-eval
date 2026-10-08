@@ -8,7 +8,7 @@ avec Pydantic AI et trace toute la chaîne avec Pydantic Logfire.
 | Étape | Contenu | État |
 |---|---|---|
 | 1. Évaluation structurée | Audit, `evaluate_ragas.py`, jeu de questions métier, pipeline de préparation (Pydantic, Pydantic AI), Logfire | ✅ |
-| 2. Données Excel et outil SQL | Base SQLite, `load_excel_to_db.py`, `sql_tool.py`, agent | ⏳ |
+| 2. Données Excel et outil SQL | Base SQLite, `load_excel_to_db.py`, `sql_tool.py`, agent rag_sql | ✅ |
 | 3. Seconde évaluation | Comparaison prototype / rag_v2 / rag_sql, robustesse texte + chiffres | ⏳ |
 
 ## Résultats
@@ -82,17 +82,23 @@ flowchart LR
 │   │   └── build_index.py      Construction de l'index FAISS rag_v2
 │   ├── rag/
 │   │   ├── rag_v2.py           Recherche + agent Pydantic AI à sortie structurée
-│   │   └── ask.py              Poser une question depuis le terminal
+│   │   └── ask.py              Poser une question depuis le terminal (rag_sql ou rag_v2)
 │   ├── observability/
 │   │   └── logfire_setup.py    Configuration et instrumentation Logfire
-│   └── sql/                    Étape 2 (à venir)
+│   ├── rag/rag_sql.py          Agent Pydantic AI : recherche documentaire + outil SQL
+│   └── sql/
+│       ├── schema.py           Schéma SQLite (SQLAlchemy) : teams, players, stats, reports
+│       ├── load_excel_to_db.py Ingestion Excel -> validation Pydantic -> SQLite
+│       └── sql_tool.py         Outil LangChain : question -> SQL (few-shot) -> résultats
 ├── evaluation/
 │   ├── evaluate_ragas.py       Script d'évaluation RAGAS
 │   ├── schemas.py              Modèles Pydantic du jeu de questions et des réponses
 │   ├── prototype_runner.py     Adaptateur : rejoue la chaîne du prototype
 │   ├── rag_v2_runner.py        Adaptateur : système rag_v2
+│   ├── rag_sql_runner.py       Adaptateur : système rag_sql
 │   ├── questions/              Jeu de questions gelé (questions_v1.json)
 │   └── results/                Une exécution par dossier (answers, scores, summary, config)
+├── docs/database.md            Documentation de la base et requêtes types
 ├── tests/                      Tests pytest
 └── data/                       Non versionné (données du client), voir « Données »
     ├── raw/                    Fichiers livrés, jamais modifiés
@@ -163,10 +169,15 @@ poetry run python -m sportsee_llm_eval.preparation.build_index
 poetry run python -m sportsee_llm_eval.preparation.excel   # tables nettoyées + rapport qualité
 poetry run python -m sportsee_llm_eval.preparation.ocr     # OCR Mistral (--force pour le refaire)
 
+#    base SQLite (étape 2), recréée à partir des mêmes sources
+poetry run python -m sportsee_llm_eval.sql.load_excel_to_db
+
 # 2. Poser une question (produit une trace Logfire)
-poetry run python -m sportsee_llm_eval.rag.ask "Quel est le pourcentage à 3 points de Stephen Curry ?"
+poetry run python -m sportsee_llm_eval.rag.ask "Quel joueur a le plus d'interceptions ?"
+poetry run python -m sportsee_llm_eval.rag.ask --system rag_v2 "Que mesure le PIE ?"
 
 # 3. Évaluer un système sur le jeu de questions (30 à 45 min, limité par les quotas Mistral)
+poetry run python evaluation/evaluate_ragas.py --system rag_sql
 poetry run python evaluation/evaluate_ragas.py --system rag_v2
 poetry run python evaluation/evaluate_ragas.py --system prototype --limit 3           # essai rapide
 poetry run python evaluation/evaluate_ragas.py --categories texte,mixte               # sous-ensemble
@@ -253,6 +264,26 @@ REB ≠ OREB + DREB pour 206 joueurs (écart ≤ 8) et PTS ≠ 2×FGM + 3PM + FT
 - **Précautions** : relecture manuelle des verdicts (deux faux positifs corrigés en resserrant
   les critères avant toute comparaison), mesure de la variabilité du juge, et aucun réglage
   du système sur les questions du jeu de test.
+
+### 5. Base SQL et agent rag_sql (étape 2)
+
+- **Schéma** (détails et requêtes types dans [`docs/database.md`](docs/database.md)) :
+  `teams`, `players`, `stats` (relation 1-1 avec `players`), `reports` et
+  `report_messages`. Pas de table `matches` : les données ne contiennent que des totaux de
+  saison (écart à la consigne confirmé par le mentor).
+- **Ingestion** : `load_excel_to_db.py` réutilise la lecture corrigée de l'Excel et les
+  modèles Pydantic de l'étape 1, insère tout en une transaction et contrôle les volumes.
+  Une colonne `search_name` (nom sans accents) rend la recherche de joueur tolérante aux
+  accents (« jokic » → Jokić).
+- **Outil SQL (LangChain)** : `mistral-small` génère la requête à partir du schéma, d'un
+  glossaire des colonnes et de 9 exemples few-shot (classement, seuil, agrégation par équipe,
+  comparaison, moyenne par match, multicritère, nom approché), distincts des questions
+  d'évaluation (vérifié par un test). Requête contrôlée (`SELECT` seul), base ouverte en
+  lecture seule, une auto-correction en cas d'erreur SQL.
+- **Agent rag_sql (Pydantic AI)** : le LLM choisit l'outil (`interroger_base_statistiques`
+  pour les questions chiffrées, `rechercher_documents` pour Reddit et les définitions, les
+  deux pour les questions mixtes). Chaque résultat d'outil porte un identifiant
+  (`sql::1`, `joueur::…`) ; la réponse doit les citer, sinon l'agent est relancé.
 
 ## Limites connues
 
