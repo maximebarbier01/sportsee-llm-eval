@@ -9,19 +9,25 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Categorie = Literal[
-    "simple", "complexe", "bruitee", "texte", "mixte", "hors_couverture"
-]
+    # questions_v1
+    "simple", "complexe", "bruitee", "texte", "mixte", "hors_couverture",
+    # robustesse_v1 (étape 3)
+    "arbitrage", "piege_unite", "homonyme", "seuil_implicite", "injection",
+]  # fmt: skip
+Outil = Literal["sql", "documents"]
 
 
 class Question(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(pattern=r"^[SCBTMH]\d{2}$")
+    id: str = Field(pattern=r"^[A-Z]\d{2}$")
     categorie: Categorie
     question: str = Field(min_length=1)
     ground_truth: str = Field(min_length=1)
     source: str
     calcul: str
+    # outils nécessaires pour répondre (jeu de robustesse) : mesure du choix d'outil
+    outils_attendus: list[Outil] = Field(default_factory=list)
 
 
 class QuestionSet(BaseModel):
@@ -48,6 +54,9 @@ class RagOutput(BaseModel):
     answer: str
     contexts: list[str]
     retrieval_empty: bool = False
+    # renseignés par les systèmes qui les exposent (rag_v2, rag_sql)
+    information_disponible: bool | None = None
+    tools_called: list[str] = Field(default_factory=list)
 
 
 class RagAnswer(RagOutput):

@@ -32,4 +32,5 @@ class RagV2Runner:
             answer=response.reponse,
             contexts=[d.page_content for d in documents],
             retrieval_empty=not documents,
+            information_disponible=response.information_disponible,
         )

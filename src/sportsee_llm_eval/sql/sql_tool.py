@@ -254,6 +254,24 @@ class SqlTool:
             span.set_attributes({"sql": sql, "erreur": error})
             return SqlResult(question=question, sql=sql, error=error)
 
+    def fingerprint(self) -> dict:
+        """Empreinte du contenu de la base (comptages + sommes de contrôle) : détecte une
+        suppression comme une modification de valeur (ex. points d'un joueur)."""
+        query = (
+            "SELECT (SELECT COUNT(*) FROM teams), (SELECT COUNT(*) FROM players), "
+            "(SELECT COUNT(*) FROM stats), (SELECT COUNT(*) FROM report_messages), "
+            "(SELECT SUM(pts) + SUM(reb) + SUM(ast) + SUM(gp) FROM stats)"
+        )
+        with self.engine.connect() as conn:
+            teams, players, stats, messages, checksum = conn.execute(text(query)).one()
+        return {
+            "teams": teams,
+            "players": players,
+            "stats": stats,
+            "report_messages": messages,
+            "checksum_stats": checksum,
+        }
+
     def as_langchain_tool(self) -> BaseTool:
         @tool("interroger_base_statistiques")
         def interroger_base_statistiques(question: str) -> str:
