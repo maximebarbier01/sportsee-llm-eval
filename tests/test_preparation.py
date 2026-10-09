@@ -215,3 +215,16 @@ def test_thread_documents_decoupe_proprement():
         assert len(d.text) <= 1500
     body = posts[0].text.split("\n", 1)[1]
     assert body.endswith(("here.", "here"))  # jamais coupé au milieu d'un mot
+
+
+def test_reponse_de_repli_sans_exception():
+    from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+    from sportsee_llm_eval.rag.rag_v2 import FALLBACK_MESSAGE, fallback_response
+
+    response = fallback_response(
+        UnexpectedModelBehavior("Exceeded maximum output retries")
+    )
+    assert response.information_disponible is False
+    assert response.sources == []
+    assert response.reponse == FALLBACK_MESSAGE

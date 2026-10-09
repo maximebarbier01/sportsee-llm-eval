@@ -94,6 +94,20 @@ FEW_SHOT_EXAMPLES = [
         "JOIN players p ON p.player_id = s.player_id WHERE p.age < 23 AND s.gp >= 50 "
         "ORDER BY s.ts_pct DESC LIMIT 5;",
     },
+    # Ajoutés après robustesse_v1 : nom ambigu (une ligne par joueur, jamais de SUM)
+    # et seuil implicite sur un pourcentage. Autres noms et statistiques que les jeux de test.
+    {
+        "question": "combien de contres pour Davis cette saison",
+        "sql": "SELECT p.name, p.team_code, s.blk, s.gp FROM stats s "
+        "JOIN players p ON p.player_id = s.player_id WHERE p.search_name LIKE '% davis' "
+        "ORDER BY s.blk DESC;",
+    },
+    {
+        "question": "Quel joueur a le meilleur pourcentage de rebonds offensifs ?",
+        "sql": "SELECT p.name, p.team_code, s.oreb_pct, s.gp, s.minutes_per_game "
+        "FROM stats s JOIN players p ON p.player_id = s.player_id "
+        "WHERE s.gp >= 50 AND s.minutes_per_game >= 15 ORDER BY s.oreb_pct DESC LIMIT 5;",
+    },
 ]
 
 INSTRUCTIONS = """\
@@ -114,7 +128,14 @@ accents) avec LIKE et le nom de famille écrit en minuscules sans accents : \
 p.search_name LIKE '%jokic%'. Si l'orthographe semble fautive, garde la partie sûre du nom. \
 Une équipe peut être désignée par son nom complet, sa ville, son surnom ou son code à \
 3 lettres : filtre sur teams.name avec LIKE ou sur le code.
-- Pour un classement, renvoie quelques lignes (LIMIT 5) pour montrer les suivants.
+- Pour un classement, renvoie toujours plusieurs lignes (LIMIT 5), jamais LIMIT 1.
+- Une question sur un joueur désigné par un nom renvoie UNE LIGNE PAR JOUEUR \
+correspondant, sans SUM ni AVG : si le nom est ambigu (plusieurs joueurs du même nom), \
+toutes les lignes doivent apparaître pour que l'ambiguïté soit visible. N'agrège (SUM, AVG, \
+COUNT) que pour un groupe explicitement demandé : une équipe, la ligue, un ensemble filtré.
+- Pour classer sur un pourcentage, un ratio, un rating ou le PIE, impose un volume minimal \
+significatif (par exemple s.gp >= 50, ou un nombre minimal de tentatives) : sinon des \
+joueurs ayant joué un ou deux matchs arrivent en tête. Garde la colonne de volume.
 - Ajoute les colonnes utiles à la réponse (nom, équipe, valeur, volume de tentatives).
 - Les données ne contiennent que des totaux de saison régulière : aucune donnée par match, \
 par date ou domicile / extérieur. Si la question en dépend, réponds exactement : \
@@ -153,6 +174,35 @@ def clean_sql(raw: str) -> str:
     """Retire un éventuel bloc de code markdown et le point-virgule final."""
     sql = re.sub(r"^```(?:sql)?\s*|\s*```$", "", raw.strip(), flags=re.IGNORECASE)
     return sql.strip().rstrip(";").strip()
+
+
+AGGREGATE = re.compile(r"\b(SUM|AVG)\s*\(", re.IGNORECASE)
+NAME_FILTER = re.compile(
+    r"\b(search_name|p\.name|players\.name)\b[^,]*?\b(LIKE|IN|=)", re.IGNORECASE
+)
+LIMIT_ONE = re.compile(r"\bLIMIT\s+1\s*$", re.IGNORECASE)
+
+
+def enforce_ranking_limit(sql: str) -> str:
+    """Un classement terminé par LIMIT 1 cache les suivants (et les ex aequo) : LIMIT 5."""
+    if re.search(r"\bORDER\s+BY\b", sql, re.IGNORECASE):
+        return LIMIT_ONE.sub("LIMIT 5", sql)
+    return sql
+
+
+def check_player_aggregate(sql: str) -> None:
+    """Refuse SUM/AVG sur des joueurs filtrés par nom sans GROUP BY : si le nom correspond
+    à plusieurs joueurs (Curry : Stephen et Seth), leurs valeurs seraient additionnées.
+    """
+    if (
+        AGGREGATE.search(sql)
+        and NAME_FILTER.search(sql)
+        and not re.search(r"\bGROUP\s+BY\b", sql, re.IGNORECASE)
+    ):
+        raise ValueError(
+            "agrégat (SUM/AVG) sur des joueurs filtrés par nom : renvoie une ligne par "
+            "joueur correspondant, sans agrégation"
+        )
 
 
 def check_sql(sql: str) -> None:
@@ -231,6 +281,8 @@ class SqlTool:
                 sql = self.generate(question, previous_error=error)
                 try:
                     check_sql(sql)
+                    check_player_aggregate(sql)
+                    sql = enforce_ranking_limit(sql)
                     columns, rows, truncated = self.execute(sql)
                 except (
                     ValueError,
