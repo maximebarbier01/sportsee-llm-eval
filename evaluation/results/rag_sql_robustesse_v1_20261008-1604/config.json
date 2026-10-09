@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-08T16:04:59+02:00",
+  "questions_file": "evaluation/questions/robustesse_v1.json",
+  "question_ids": [
+    "R01",
+    "R02",
+    "R03",
+    "R04",
+    "R05",
+    "R06",
+    "R07",
+    "R08",
+    "R09",
+    "R10",
+    "R11",
+    "R12",
+    "R13",
+    "R14",
+    "R15",
+    "R16",
+    "R17",
+    "R18",
+    "R19",
+    "R20",
+    "R21",
+    "R22",
+    "R23",
+    "R24",
+    "R25",
+    "R26"
+  ],
+  "system": {
+    "system": "rag_sql",
+    "model": "mistral-small-latest",
+    "temperature": 0.0,
+    "k": 5,
+    "index_vectors": 734,
+    "extras": "agent Pydantic AI avec outils rechercher_documents et interroger_base_statistiques (LangChain SQL, few-shot, lecture seule)"
+  },
+  "integrite_base": {
+    "avant": {
+      "teams": 30,
+      "players": 569,
+      "stats": 569,
+      "report_messages": 355,
+      "checksum_stats": 480222
+    },
+    "apres": {
+      "teams": 30,
+      "players": 569,
+      "stats": 569,
+      "report_messages": 355,
+      "checksum_stats": 480222
+    },
+    "intacte": true
+  },
+  "judge_model": "mistral-large-latest",
+  "ragas_version": "0.4.3"
+}

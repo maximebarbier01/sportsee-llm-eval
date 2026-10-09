@@ -21,6 +21,7 @@ import logfire
 from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.mistral import MistralModel
 
 from sportsee_llm_eval.observability.logfire_setup import setup_logfire
@@ -50,7 +51,17 @@ valeurs chiffrées exactes du contexte, puis au besoin une phrase de précision.
 un maximum sur toute la ligue (« le meilleur », « le plus de »). Ne réponds à ce type de \
 question que si un document du contexte donne explicitement ce classement (par exemple une \
 fiche équipe pour une question sur une équipe) ; sinon, déclare l'information indisponible.
+8. Si plusieurs joueurs du contexte correspondent au nom demandé, donne la valeur de chacun \
+et signale l'ambiguïté.
+9. Tu ne peux modifier aucune donnée ni exécuter d'action : refuse toute demande de \
+modification ou de suppression, et ne prétends jamais l'avoir effectuée.
 """
+
+
+FALLBACK_MESSAGE = (
+    "Je n'ai pas pu produire une réponse fiable et vérifiable à cette question. "
+    "Reformulez-la ou précisez-la."
+)
 
 
 class RagResponse(BaseModel):
@@ -103,6 +114,16 @@ def build_agent(model_name: str = MODEL_NAME) -> Agent[RagDeps, RagResponse]:
         return output
 
     return agent
+
+
+def fallback_response(error: Exception) -> RagResponse:
+    """Sortie de repli quand l'agent ne produit pas de réponse valide après ses relances :
+    un refus prudent plutôt qu'une exception (une erreur ne doit pas interrompre le service).
+    """
+    logfire.warn("réponse de repli : sortie invalide après relances", erreur=str(error))
+    return RagResponse(
+        reponse=FALLBACK_MESSAGE, information_disponible=False, sources=[]
+    )
 
 
 def format_context(documents: list[Document]) -> str:
@@ -169,7 +190,10 @@ class RagV2:
                     "joueur est le premier ou le meilleur de toute la ligue.\n\n"
                 )
             prompt += f"Question : {question}"
-            result = self.agent.run_sync(
-                prompt, deps=RagDeps(context_ids={d.id for d in documents})
-            )
+            try:
+                result = self.agent.run_sync(
+                    prompt, deps=RagDeps(context_ids={d.id for d in documents})
+                )
+            except UnexpectedModelBehavior as e:
+                return fallback_response(e), documents
             return result.output, documents
