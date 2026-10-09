@@ -9,32 +9,40 @@ avec Pydantic AI et trace toute la chaîne avec Pydantic Logfire.
 |---|---|---|
 | 1. Évaluation structurée | Audit, `evaluate_ragas.py`, jeu de questions métier, pipeline de préparation (Pydantic, Pydantic AI), Logfire | ✅ |
 | 2. Données Excel et outil SQL | Base SQLite, `load_excel_to_db.py`, `sql_tool.py`, agent rag_sql | ✅ |
-| 3. Seconde évaluation | Comparaison prototype / rag_v2 / rag_sql, robustesse texte + chiffres | ⏳ |
+| 3. Seconde évaluation | Comparaison prototype / rag_v2 / rag_sql, robustesse texte + chiffres, biais NL→SQL | ✅ |
+
+**Rapport de mise en place et d'évaluation** : [`docs/rapport.md`](docs/rapport.md)
+(PDF : `docs/rapport.pdf`, régénéré par `poetry run python docs/build_report.py`).
 
 ## Résultats
 
 Même jeu de 32 questions, même juge (`mistral-large-latest`), même modèle de réponse
-(`mistral-small-latest`) et même nombre d'extraits (k = 5).
+(`mistral-small-latest`) et même nombre d'extraits (k = 5). rag_sql : état final, après les
+corrections issues des tests de robustesse.
 
-| Métrique (moyenne) | Prototype | rag_v2 |
-|---|---|---|
-| Exactitude de la réponse | 0,32 | **0,68** |
-| Fidélité au contexte (faithfulness) | 0,27 | **0,82** |
-| Rappel du contexte (context recall) | 0,28 | **0,71** |
-| Précision du contexte | 0,45 | **0,59** |
-| Pertinence (answer relevancy) | 0,70 | **0,83** |
-| Refus sans invention (4 questions hors couverture) | 0 / 4 | **4 / 4** |
-| Latence moyenne par question | 4,5 s | **1,4 s** |
+| Métrique (moyenne) | Prototype | rag_v2 | rag_sql |
+|---|---|---|---|
+| Exactitude de la réponse | 0,32 | 0,68 | **0,93** |
+| Fidélité au contexte (faithfulness) | 0,27 | 0,82 | **0,91** |
+| Rappel du contexte (context recall) | 0,28 | 0,71 | **0,90** |
+| Précision du contexte | 0,45 | 0,59 | **0,87** |
+| Pertinence (answer relevancy) | 0,70 | 0,83 | **0,87** |
+| Refus sans invention (4 questions hors couverture) | 0 / 4 | **4 / 4** | 3 / 4 |
+| Latence moyenne par question | 4,5 s | **1,4 s** | 2,8 s |
 
 Exactitude par catégorie :
 
-| Catégorie | n | Prototype | rag_v2 |
-|---|---|---|---|
-| simple | 7 | 0,57 | 0,71 |
-| complexe (filtres, agrégations) | 7 | 0,00 | 0,43 |
-| bruitée (fautes, SMS, franglais) | 5 | 0,20 | 0,80 |
-| texte (threads Reddit) | 6 | 0,67 | 0,83 |
-| mixte (Reddit + statistiques) | 3 | 0,00 | 0,67 |
+| Catégorie | n | Prototype | rag_v2 | rag_sql |
+|---|---|---|---|---|
+| simple | 7 | 0,57 | 0,71 | **1,00** |
+| complexe (filtres, agrégations) | 7 | 0,00 | 0,43 | **0,86** |
+| bruitée (fautes, SMS, franglais) | 5 | 0,20 | 0,80 | **1,00** |
+| texte (threads Reddit) | 6 | 0,67 | **0,83** | 0,80 |
+| mixte (Reddit + statistiques) | 3 | 0,00 | 0,67 | **1,00** |
+
+Deux jeux de robustesse (54 questions : homonymes, seuils implicites, pièges d'unité, arbitrage
+entre sources, injections) complètent ces mesures ; analyse complète des biais et
+recommandations dans le [rapport](docs/rapport.md).
 
 Détails : [`evaluation/results/`](evaluation/results/). La variabilité du juge, mesurée en
 renotant les mêmes réponses, est de l'ordre de 0,05 à 0,07 par métrique : un écart inférieur
@@ -183,7 +191,11 @@ poetry run python evaluation/evaluate_ragas.py --system prototype --limit 3     
 poetry run python evaluation/evaluate_ragas.py --categories texte,mixte               # sous-ensemble
 poetry run python evaluation/evaluate_ragas.py --from-answers evaluation/results/<dossier>  # renoter sans régénérer
 
-# 4. Tests et qualité du code
+# 4. Figures et rapport (à partir de evaluation/results/)
+poetry run python evaluation/make_figures.py
+poetry run python docs/build_report.py
+
+# 5. Tests et qualité du code
 poetry run pytest tests -q
 poetry run ruff check src evaluation tests && poetry run black --check src evaluation tests
 ```
