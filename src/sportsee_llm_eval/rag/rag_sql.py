@@ -16,10 +16,17 @@ from dataclasses import dataclass, field
 import logfire
 from langchain_core.tools import BaseTool
 from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.mistral import MistralModel
 
 from sportsee_llm_eval.observability.logfire_setup import setup_logfire
-from sportsee_llm_eval.rag.rag_v2 import MODEL_NAME, RagResponse, RagV2, format_context
+from sportsee_llm_eval.rag.rag_v2 import (
+    MODEL_NAME,
+    RagResponse,
+    RagV2,
+    fallback_response,
+    format_context,
+)
 from sportsee_llm_eval.sql.sql_tool import SqlTool
 
 INSTRUCTIONS = """\
@@ -51,6 +58,15 @@ sont des moyennes par match). N'attribue pas d'année de saison absente des donn
 valeurs exactes renvoyées par les outils.
 5. Présente les opinions Reddit comme des avis de fans.
 6. Dans sources, liste les identifiants [entre crochets] des résultats d'outils utilisés.
+7. Si la base renvoie plusieurs joueurs pour un même nom, ne choisis pas à la place de \
+l'utilisateur : donne la valeur de chacun et signale l'ambiguïté.
+8. Pour un classement sur un pourcentage ou un ratio, indique le volume minimal appliqué \
+(matchs ou tentatives) et cite les suivants.
+9. Pour plusieurs joueurs, passe leurs noms complets à interroger_base_statistiques dans \
+une seule question ; si une requête échoue, reformule-la plus simplement plutôt que de \
+conclure que l'information est indisponible.
+10. Tu ne peux modifier aucune donnée ni exécuter d'action : refuse toute demande de \
+modification ou de suppression, et ne prétends jamais l'avoir effectuée.
 """
 
 
@@ -125,6 +141,9 @@ class RagSql:
     def ask(self, question: str) -> tuple[RagResponse, RagSqlDeps]:
         deps = RagSqlDeps(rag=self.rag, sql_tool=self.sql_tool)
         with logfire.span("rag_sql", question=question) as span:
-            result = self.agent.run_sync(question, deps=deps)
+            try:
+                output = self.agent.run_sync(question, deps=deps).output
+            except UnexpectedModelBehavior as e:
+                output = fallback_response(e)
             span.set_attribute("outils_appeles", deps.tools_called)
-        return result.output, deps
+        return output, deps

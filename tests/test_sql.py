@@ -16,7 +16,13 @@ from sportsee_llm_eval.sql.schema import (
     get_engine,
     search_name,
 )
-from sportsee_llm_eval.sql.sql_tool import FEW_SHOT_EXAMPLES, check_sql, clean_sql
+from sportsee_llm_eval.sql.sql_tool import (
+    FEW_SHOT_EXAMPLES,
+    check_player_aggregate,
+    check_sql,
+    clean_sql,
+    enforce_ranking_limit,
+)
 
 QUESTIONS_FILE = (
     Path(__file__).resolve().parents[1]
@@ -152,3 +158,62 @@ def test_exemples_few_shot_s_executent(db_path):
         for example in FEW_SHOT_EXAMPLES:
             rows = conn.execute(text(clean_sql(example["sql"]))).fetchall()
             assert rows, example["question"]
+
+
+# --------------------------------------------------------------------------- garde-fous
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        (
+            "SELECT p.name, SUM(s.pts) FROM stats s JOIN players p ON p.player_id = s.player_id "
+            "WHERE p.search_name LIKE '%curry%'"
+        ),
+        (
+            "SELECT AVG(s.reb) FROM stats s JOIN players p USING (player_id) "
+            "WHERE p.name IN ('A', 'B')"
+        ),
+    ],
+)
+def test_agregat_sur_nom_refuse(sql):
+    with pytest.raises(ValueError, match="une ligne par joueur"):
+        check_player_aggregate(sql)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        (
+            "SELECT t.name, SUM(s.pts) FROM stats s JOIN players p USING (player_id) "
+            "JOIN teams t ON t.code = p.team_code WHERE t.name LIKE '%Jazz%' GROUP BY t.name"
+        ),
+        (
+            "SELECT ROUND(AVG(p.age), 1) FROM players p JOIN teams t ON t.code = p.team_code "
+            "WHERE t.name LIKE '%Lakers%'"
+        ),
+        (
+            "SELECT p.name, s.pts FROM stats s JOIN players p USING (player_id) "
+            "WHERE p.search_name LIKE '%curry%'"
+        ),
+    ],
+)
+def test_agregats_legitimes_acceptes(sql):
+    check_player_aggregate(sql)
+
+
+def test_limit_1_reecrit_sur_un_classement():
+    assert enforce_ranking_limit("SELECT a FROM t ORDER BY a DESC LIMIT 1").endswith(
+        "LIMIT 5"
+    )
+    assert enforce_ranking_limit("SELECT a FROM t LIMIT 1").endswith(
+        "LIMIT 1"
+    )  # pas de tri
+    assert enforce_ranking_limit("SELECT a FROM t ORDER BY a LIMIT 10").endswith(
+        "LIMIT 10"
+    )
+
+
+def test_exemples_few_shot_respectent_les_garde_fous():
+    for example in FEW_SHOT_EXAMPLES:
+        check_player_aggregate(clean_sql(example["sql"]))
