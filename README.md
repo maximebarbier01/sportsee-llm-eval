@@ -144,7 +144,8 @@ poetry install --with eval,dev
 
 Groupes optionnels : `notebook` (Jupyter) et `ingestion` (EasyOCR, PyMuPDF), ce dernier
 n'étant nécessaire que pour ré-indexer le prototype d'origine. Sans Poetry, les fichiers
-`requirements.txt` (principal) et `requirements-dev.txt` (tous les groupes sauf `ingestion`)
+`requirements.txt` (principal : assistant et API) et `requirements-dev.txt` (principal + évaluation
++ tests ; sans les groupes optionnels `notebook` et `ingestion`)
 sont exportés depuis `poetry.lock` :
 
 ```bash
