@@ -6,7 +6,7 @@
 |---|---|
 | Auteur | Maxime Barbier |
 | Destinataire | Sarah, Data Scientist, équipe R&D SportSee |
-| Version | 1.0, octobre 2026 |
+| Version | 1.1, octobre 2026 |
 | Dépôt | `github.com/maximebarbier01/sportsee-llm-eval` |
 | Résultats bruts | `evaluation/results/` (une exécution par dossier : réponses, scores, configuration) |
 
@@ -17,7 +17,7 @@
 | J'ai expliqué ma méthodologie dans le rapport | 2 (démarche, données, systèmes, protocole), 4 (mise en place) |
 | Je suis capable d'argumenter sur mes choix méthodologiques | 3 (choix, alternatives écartées, raisons) |
 | J'ai identifié et analysé les limites et biais potentiels de l'évaluation | 7 (biais de l'évaluation et limites du système), 5.3, 5.4 |
-| J'ai interprété les résultats en lien avec les problématiques métier | 6 |
+| J'ai interprété les résultats en lien avec les problématiques métier | 5.6 (objectifs et verdicts), 6 |
 | J'ai proposé des recommandations concrètes et actionnables | 8 (actions priorisées, effort, indicateur de réussite) |
 | J'ai structuré le rapport de façon lisible et professionnelle | Résumé exécutif, plan, tableaux et figures reproductibles, annexes |
 
@@ -37,7 +37,8 @@ inventait des chiffres et leur attribuait une source.
 2. **rag_v2** : un pipeline de préparation des données validé par Pydantic, un nouvel index, une
    sortie structurée par Pydantic AI et des traces Pydantic Logfire ;
 3. **rag_sql** : rag_v2 avec une base SQLite, un outil LangChain SQL (few-shot) et un agent qui
-   choisit entre la recherche documentaire et la base.
+   choisit entre la recherche documentaire et la base. C'est le système livré, exposé par une
+   **API REST** (FastAPI).
 
 **Résultats (jeu principal de 32 questions métier).**
 
@@ -52,6 +53,11 @@ inventait des chiffres et leur attribuait une source.
 passage langage naturel → SQL (agrégation non demandée sur un nom ambigu, absence de seuil de
 volume), puis validé leur correction sur des questions écrites **avant** les corrections. Les
 garde-fous écrits dans le code se généralisent ; les consignes données au LLM, beaucoup moins.
+
+**Bilan par rapport aux objectifs** (section 5.6) : 7 objectifs atteints sur 11, dont tous ceux
+qui concernent le cœur du besoin (exactitude, questions complexes, fidélité, sécurité, latence). Les
+3 objectifs non atteints et l'objectif partiel portent sur des consignes fines que le LLM n'applique
+pas de façon fiable : homonymes, refus strict, seuils.
 
 **Recommandations prioritaires.** Traiter les homonymes et l'arbitrage entre sources dans le code
 plutôt que par consigne, ajouter des données par match pour couvrir les questions de préparation de
@@ -236,6 +242,7 @@ question) ou extraites du texte des discussions.
 | rag_sql | `rag/rag_sql.py` | Agent à deux outils, identifiants de résultats cités |
 | Traces | `observability/logfire_setup.py` | Pipeline, recherche, prompts, appels Mistral, tokens, requêtes SQL, questions évaluées |
 | Évaluation | `evaluation/evaluate_ragas.py` | Génération, notation RAGAS, critères ajoutés, intégrité de la base, choix d'outils |
+| API REST | `api/main.py` | FastAPI : `POST /ask` (réponse, disponibilité, sources, outils, latence), `GET /health`, documentation `/docs` ; requêtes et réponses validées par Pydantic ; formats et exemples `curl` dans le README |
 
 **Schéma de la base.** `teams` (30) ← `players` (569) ↔ `stats` (relation 1-1, 41 statistiques) ;
 `reports` (4 threads) ← `report_messages` (355). Clés étrangères et contraintes (victoires + défaites
@@ -364,9 +371,13 @@ seuil, des pièges d'unité tous réussis, aucune action prétendue par rag_v2, 
 - **Homonymes** : la requête renvoie bien tous les joueurs, mais le LLM **en choisit un sans le dire**
   (Jrue au lieu des deux Holiday, Lonzo au lieu des deux Ball), malgré la règle. Le biais a changé de
   place, du SQL vers la rédaction.
-- **Arbitrage** : sur deux questions qui portent explicitement sur « le tableau Reddit », l'agent
-  consulte les documents puis répond « indisponible » en se fiant au résultat `donnees_indisponibles`
-  du SQL. Ce biais n'était pas apparu sur v1 (4 / 4) : un seul jeu de test ne suffit pas.
+- **Arbitrage** : sur V05 (« selon le tableau Reddit… »), l'agent a bien reçu le document contenant
+  la réponse (3 895 points en playoffs pour Harden), mais répond « indisponible » en se fiant au
+  résultat `donnees_indisponibles` du SQL. Même biais sur T03 du jeu principal. Il n'était pas apparu
+  sur v1 (4 / 4) : un seul jeu de test ne suffit pas. L'autre échec de la catégorie, V09, a une cause
+  différente : le document contenant la réponse **n'a pas été récupéré** par la recherche, et l'agent
+  a eu raison de répondre « indisponible » au vu de son contexte. Le score de 0,50 mélange donc un
+  biais d'arbitrage (V05) et un défaut de recherche (V09), qui appellent deux corrections différentes.
 - **Effet de bord** : la consigne « reformule plutôt que de conclure à l'indisponibilité » a poussé
   l'agent à fournir une donnée de remplacement sur une question hors couverture du jeu principal
   (H02 : totaux de rebonds par équipe en réponse à « domicile / extérieur »). D'où le 3 / 4.
@@ -380,6 +391,42 @@ seuil, des pièges d'unité tous réussis, aucune action prétendue par rag_v2, 
 rag_v2 est le plus rapide (1,4 s) grâce à des réponses courtes. rag_sql coûte de 2,8 à 4,0 s : un appel
 pour choisir l'outil, un pour générer la requête, parfois une relance, puis la rédaction. Le prototype
 est lent (3,8 à 4,5 s) à cause de réponses longues (emojis, « débat ouvert »).
+
+<div style="break-before: page"></div>
+
+### 5.6 Bilan par rapport aux objectifs de performance
+
+Les seuils ci-dessous traduisent les attentes d'un staff qui utiliserait l'assistant pour préparer
+ses séances et ses rapports. **Ils ont été formalisés au moment du bilan, et non avant la première
+mesure** : chacun est donc justifié par le besoin métier, et non par le résultat obtenu, et cette
+limite est reprise en section 7.1. Les valeurs « atteint » sont celles de rag_sql, système livré ;
+quand la relecture manuelle corrige le juge, la valeur corrigée est indiquée.
+
+| Indicateur | Objectif | Justification métier | Atteint (rag_sql) | Verdict |
+|---|---|---|---|---|
+| Exactitude, jeu principal | ≥ 0,85 | Un coach doit pouvoir utiliser la réponse sans la revérifier à chaque fois | **0,93** (prototype : 0,32) | ✅ Atteint |
+| Exactitude, questions complexes (classements, agrégations) | ≥ 0,80 | Ce sont les questions qui motivaient la mission | **0,86** (prototype : 0,00) | ✅ Atteint |
+| Fidélité au contexte (faithfulness) | ≥ 0,85 | Une affirmation non sourcée n'est pas exploitable par un staff | **0,91** (prototype : 0,27) | ✅ Atteint |
+| Rappel du contexte | ≥ 0,75 | Les éléments nécessaires doivent être retrouvés | **0,90** | ✅ Atteint |
+| Refus correct hors couverture | 100 % | Une réponse inventée est plus dangereuse qu'un refus | **3 / 4** (4 / 4 avant les corrections) | ❌ Non atteint : effet de bord H02 |
+| Injections refusées, base intacte | 100 % | Aucune donnée du club ne doit pouvoir être modifiée | **6 / 6**, empreinte identique | ✅ Atteint |
+| Choix d'outils conforme | ≥ 90 % | Une question chiffrée doit passer par la base | **42 / 42** (100 %) | ✅ Atteint |
+| Exactitude sur questions inédites (robustesse v2) | ≥ 0,80 | Le système doit tenir sur des formulations jamais vues | **0,68** (0,64 après relecture) | ❌ Non atteint |
+| Homonymes signalés | 100 % | Une confusion entre deux joueurs est invisible pour l'utilisateur | **0 / 3** après relecture | ❌ Non atteint : priorité n°1 |
+| Seuil de volume appliqué aux pourcentages | 100 % | Un classement sur 2 tirs induit en erreur | **3 / 3** appliqués ; 2 / 3 réponses justes après relecture | ⚠️ Partiel : seuil choisi par le LLM |
+| Latence moyenne | ≤ 5 s | Usage en préparation de séance, pas en direct | **2,8 s** (4,0 s sur v2) | ✅ Atteint |
+
+**Lecture.**
+
+- **Les forces** sont nettes et concernent le cœur du besoin : exactitude, questions complexes,
+  fidélité, sécurité et choix d'outils dépassent largement leurs objectifs, à partir d'un prototype
+  qui en était très loin.
+- **Les faiblesses** sont toutes du même type : des cas où le LLM doit appliquer une consigne fine
+  (signaler une ambiguïté, s'arrêter à « indisponible », choisir un seuil). Ce sont précisément les
+  points que les recommandations 1 à 3 proposent de traiter dans le code.
+- **L'objectif de 0,80 sur questions inédites** n'est pas atteint, mais ce jeu concentre
+  volontairement les cas difficiles (homonymes, seuils, arbitrage) : il mesure la robustesse, pas la
+  performance moyenne attendue en usage courant, que représente le jeu principal.
 
 ---
 
@@ -427,6 +474,7 @@ usage en direct pendant un match.
 | **Variabilité** | Mêmes réponses renotées : écart moyen de 0,05 (fidélité) et 0,07 (précision du contexte), jusqu'à 0,28 sur une question | Un écart inférieur à environ 0,1 n'est pas un progrès | Seuls les écarts nettement supérieurs sont interprétés |
 | **Juge et système de la même famille** (Mistral) | Un juge peut favoriser le style de sa famille | Biais possible en faveur des réponses Mistral | Juge plus grand que le modèle évalué ; à confirmer avec un juge d'un autre fournisseur (recommandation) |
 | **Petits jeux** | 32 + 26 + 28 questions ; certaines catégories ont 2 ou 3 questions | Une question = 33 à 50 points de pourcentage dans sa catégorie | Conclusions tirées sur des tendances répétées entre jeux, pas sur une catégorie isolée |
+| **Objectifs fixés après les mesures** | Les seuils de la section 5.6 ont été formalisés au moment du bilan | Risque d'objectifs taillés sur les résultats | Chaque seuil est justifié par le besoin métier ; les seuils non atteints sont conservés ; à l'avenir, fixer les objectifs avec le staff avant la première mesure |
 | **Questions écrites par le développeur** | Même auteur pour le système et les tests | Les tests peuvent refléter ses propres attentes | Jeu v2 écrit avant les corrections ; vérification qu'aucune question ne recoupe les exemples few-shot |
 | **Références discutables** | T05 : la référence suit le commentaire le plus voté, d'autres commentaires disent l'inverse. M01 : réponse juste en moyenne par match, référence en totaux | Faux négatifs | Cas signalés individuellement |
 | **Limites des métriques RAGAS** | `factual_correctness` pénalise la verbosité ; `answer_relevancy` reste élevée pour une réponse fausse ; pour un agent, le « contexte » est le résultat des outils | Ces métriques seules auraient masqué l'essentiel | Critère d'exactitude ajouté ; lecture croisée des métriques |
@@ -454,7 +502,7 @@ de vérifier qu'elles ont fonctionné**.
 | # | Action | Pourquoi | Effort | Indicateur de réussite |
 |---|---|---|---|---|
 | **1** | **Traiter les homonymes dans le code** : si la requête renvoie plusieurs joueurs pour un nom, la réponse liste obligatoirement chacun (ou demande de préciser), sans passer par le LLM | Seul défaut grave et silencieux restant ; les consignes n'y suffisent pas | 1 jour | 100 % des questions « homonyme » d'un nouveau jeu de validation |
-| **2** | **Arbitrage explicite entre sources** : une question qui cite Reddit, un tableau ou des fans passe d'abord par la recherche documentaire ; un `donnees_indisponibles` SQL ne peut pas annuler un document qui contient la réponse | Biais d'arbitrage (V05, V09, T03) | 1 à 2 jours | Arbitrage ≥ 3 / 4 sur un jeu inédit, sans perte sur « mixte » |
+| **2** | **Arbitrage explicite entre sources** : une question qui cite Reddit, un tableau ou des fans passe d'abord par la recherche documentaire ; un `donnees_indisponibles` SQL ne peut pas annuler un document qui contient la réponse. Pour la recherche, joindre systématiquement le post du thread quand la question cite un tableau Reddit | Biais d'arbitrage (V05, T03) et défaut de recherche (V09) | 1 à 2 jours | Arbitrage ≥ 3 / 4 sur un jeu inédit, sans perte sur « mixte » |
 | **3** | **Restreindre la règle de reformulation** aux erreurs techniques de SQL, et interdire les données « de remplacement » | Effet de bord H02 | 0,5 jour | 4 / 4 hors couverture sur le jeu principal |
 | **4** | **Ingérer des données par match** : tables `matches` et `player_game_stats`, colonne `season` | Débloque les questions de préparation de match, premier besoin du brief | 3 à 5 jours selon la source | Questions « 5 derniers matchs », « domicile / extérieur » répondues avec la bonne valeur |
 | **5** | **Évaluation continue** : à chaque modification, tests automatiques + évaluation d'un sous-ensemble de 10 questions en intégration continue ; jeu de validation renouvelé à chaque cycle de corrections | Éviter les régressions et les réglages sur le jeu de test | 1 à 2 jours | Exécution automatique sur chaque PR, seuil d'alerte sur l'exactitude |
@@ -494,6 +542,7 @@ poetry run python -m sportsee_llm_eval.preparation.build_index      # pipeline +
 poetry run python -m sportsee_llm_eval.sql.load_excel_to_db         # base SQLite
 poetry run python evaluation/evaluate_ragas.py --system rag_sql     # jeu principal
 poetry run python evaluation/evaluate_ragas.py --system rag_sql --questions evaluation/questions/robustesse_v2.json
+poetry run uvicorn sportsee_llm_eval.api.main:app --port 8000      # API REST (documentation sur /docs)
 poetry run python evaluation/make_figures.py                        # figures de ce rapport
 poetry run python docs/build_report.py                              # export PDF
 ```
