@@ -52,66 +52,75 @@ renotant les mêmes réponses, est de l'ordre de 0,05 à 0,07 par métrique : un
 
 ```mermaid
 flowchart LR
-    subgraph Préparation["Pipeline de préparation (preparation/)"]
-        XL["regular NBA.xlsx"] --> EX["excel.py<br/>lecture corrigée"]
-        EX --> PY["schemas.py<br/>validation Pydantic"]
-        PY --> DOC["documents.py<br/>fiches joueur / équipe / dictionnaire"]
-        PDF["Reddit 1-4.pdf"] --> OCR["ocr.py<br/>Mistral OCR (cache)"]
-        OCR --> RD["reddit.py<br/>nettoyage, messages"]
-        DOC --> IDX["build_index.py<br/>mistral-embed + FAISS"]
-        RD --> IDX
+    U["Coach / analyste<br/>(curl, Postman, application)"] -->|"POST /ask"| API["API REST FastAPI<br/>api/main.py"]
+    API --> AG{"Agent rag_sql<br/>Pydantic AI · mistral-small"}
+    AG -->|"question chiffrée"| SQLT["Outil LangChain SQL<br/>few-shot · SELECT seul"]
+    AG -->|"avis, définitions"| RET["Recherche vectorielle<br/>FAISS k=5 + post du thread"]
+    SQLT --> DB[("SQLite · lecture seule<br/>teams · players · stats<br/>reports · report_messages")]
+    RET --> IDX[("Index FAISS<br/>734 documents")]
+    AG --> OUT["RagResponse validée<br/>réponse · disponibilité · sources"]
+    OUT --> API
+
+    subgraph PREP["Préparation des données (une fois, puis à chaque nouvel export)"]
+        XL["regular NBA.xlsx"] --> VAL["excel.py + schemas.py<br/>nettoyage · validation Pydantic"]
+        PDF["Reddit 1-4.pdf"] --> OCR["ocr.py + reddit.py<br/>Mistral OCR (cache) · nettoyage"]
+        VAL --> LOAD["load_excel_to_db.py"]
+        VAL --> BI["build_index.py<br/>mistral-embed"]
+        OCR --> BI
+        OCR --> LOAD
     end
-    subgraph RAG["Chaîne rag_v2 (rag/)"]
-        Q["Question"] --> RET["Recherche k=5<br/>+ post du thread"]
-        IDX --> RET
-        RET --> AG["Agent Pydantic AI<br/>mistral-small"]
-        AG --> OUT["RagResponse validée<br/>réponse, disponibilité, sources"]
-    end
-    subgraph Obs["Observabilité"]
-        LF["Pydantic Logfire"]
-    end
-    Préparation -. spans .-> LF
-    RAG -. spans .-> LF
-    OUT --> EV["evaluate_ragas.py<br/>RAGAS + juge mistral-large"]
+    LOAD --> DB
+    BI --> IDX
+
+    API -. traces .-> LF["Pydantic Logfire"]
+    AG -. traces .-> LF
+    OUT -. évaluation .-> EV["evaluate_ragas.py<br/>RAGAS + juge mistral-large"]
 ```
+
+Le **prototype** d'origine (`prototype/`) et **rag_v2** (recherche seule, sans SQL) restent
+disponibles pour la comparaison ; rag_sql est le système livré, exposé par l'API.
 
 ## Structure du dépôt
 
 ```
-├── prototype/                  Prototype livré par SportSee (Streamlit), porté a minima vers mistralai 2.x
-│   └── PORTAGE.md              Journal des modifications du portage
-├── src/sportsee_llm_eval/
-│   ├── preparation/
+├── src/sportsee_llm_eval/       Code du système (package Python)
+│   ├── api/
+│   │   └── main.py             API REST FastAPI : /ask, /health, documentation /docs
+│   ├── preparation/            Préparation des données
 │   │   ├── excel.py            Lecture et nettoyage reproductible du classeur Excel
 │   │   ├── schemas.py          Modèles Pydantic : joueurs, équipes, dictionnaire, messages Reddit, documents
 │   │   ├── documents.py        Fiches joueur / équipe / dictionnaire validées
 │   │   ├── ocr.py              OCR Mistral des PDF Reddit, mis en cache
 │   │   ├── reddit.py           Nettoyage du texte OCR, découpage en messages et documents
-│   │   └── build_index.py      Construction de l'index FAISS rag_v2
-│   ├── rag/
-│   │   ├── rag_v2.py           Recherche + agent Pydantic AI à sortie structurée
-│   │   └── ask.py              Poser une question depuis le terminal (rag_sql ou rag_v2)
-│   ├── observability/
-│   │   └── logfire_setup.py    Configuration et instrumentation Logfire
-│   ├── rag/rag_sql.py          Agent Pydantic AI : recherche documentaire + outil SQL
-│   └── sql/
-│       ├── schema.py           Schéma SQLite (SQLAlchemy) : teams, players, stats, reports
-│       ├── load_excel_to_db.py Ingestion Excel -> validation Pydantic -> SQLite
-│       └── sql_tool.py         Outil LangChain : question -> SQL (few-shot) -> résultats
-├── evaluation/
+│   │   └── build_index.py      Construction de l'index FAISS
+│   ├── sql/                    Base de données et outil SQL
+│   │   ├── schema.py           Schéma SQLite (SQLAlchemy) : teams, players, stats, reports
+│   │   ├── load_excel_to_db.py Ingestion Excel -> validation Pydantic -> SQLite
+│   │   └── sql_tool.py         Outil LangChain : question -> SQL (few-shot) -> résultats
+│   ├── rag/                    Assistants
+│   │   ├── rag_sql.py          Agent Pydantic AI : recherche documentaire + outil SQL (système livré)
+│   │   ├── rag_v2.py           Recherche + réponse structurée, sans SQL (comparaison)
+│   │   └── ask.py              Poser une question depuis le terminal
+│   └── observability/
+│       └── logfire_setup.py    Configuration et instrumentation Logfire
+├── evaluation/                 Évaluation et tests de robustesse
 │   ├── evaluate_ragas.py       Script d'évaluation RAGAS
+│   ├── make_figures.py         Graphiques du rapport, recalculés depuis results/
 │   ├── schemas.py              Modèles Pydantic du jeu de questions et des réponses
-│   ├── prototype_runner.py     Adaptateur : rejoue la chaîne du prototype
-│   ├── rag_v2_runner.py        Adaptateur : système rag_v2
-│   ├── rag_sql_runner.py       Adaptateur : système rag_sql
-│   ├── questions/              Jeu de questions gelé (questions_v1.json)
+│   ├── *_runner.py             Adaptateurs : prototype, rag_v2, rag_sql
+│   ├── questions/              Jeux de questions gelés (principal, robustesse v1 et v2)
 │   └── results/                Une exécution par dossier (answers, scores, summary, config)
-├── docs/database.md            Documentation de la base et requêtes types
-├── tests/                      Tests pytest
+├── docs/
+│   ├── rapport.md / .pdf       Rapport de mise en place et d'évaluation
+│   ├── database.md             Documentation de la base et requêtes types
+│   └── build_report.py         Export du rapport en PDF
+├── prototype/                  Prototype livré par SportSee, porté a minima (baseline)
+├── tests/                      Tests pytest (données, SQL, évaluation, API)
 └── data/                       Non versionné (données du client), voir « Données »
     ├── raw/                    Fichiers livrés, jamais modifiés
     ├── interim/ocr/            Cache de l'OCR Mistral
     ├── processed/              Tables nettoyées (CSV) et documents indexés (JSONL)
+    ├── database/               Base SQLite
     └── vector_store/           Index FAISS : prototype/ (d'origine) et rag_v2/
 ```
 
@@ -203,6 +212,122 @@ poetry run ruff check src evaluation tests && poetry run black --check src evalu
 Chaque évaluation écrit dans `evaluation/results/<système>_<date>/` : `answers.jsonl`
 (réponses et contextes), `scores.csv` (une ligne par question), `summary.md` (tableau
 catégorie × métrique) et `config.json` (modèles, paramètres, versions).
+
+## API REST
+
+L'assistant est exposé par une API **FastAPI**. La documentation interactive (Swagger), avec
+les schémas et un bouton « Try it out », est générée automatiquement sur `/docs`.
+
+### Lancer l'API
+
+Prérequis : la base et l'index sont construits (voir « Utilisation », étape 1) et
+`MISTRAL_API_KEY` est défini dans `.env`.
+
+```bash
+poetry run uvicorn sportsee_llm_eval.api.main:app --port 8000
+```
+
+| Adresse | Contenu |
+|---|---|
+| `http://localhost:8000/docs` | Documentation interactive (Swagger) |
+| `http://localhost:8000/openapi.json` | Spécification OpenAPI (importable dans Postman) |
+
+### Endpoints
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| `GET` | `/health` | État du service : base SQLite, index vectoriel et clé Mistral présents |
+| `POST` | `/ask` | Pose une question et renvoie une réponse structurée |
+
+**Requête `POST /ask`** (JSON) :
+
+| Champ | Type | Obligatoire | Description |
+|---|---|---|---|
+| `question` | texte, 3 à 500 caractères | oui | Question en langage naturel |
+| `system` | `"rag_sql"` ou `"rag_v2"` | non (défaut `rag_sql`) | `rag_sql` : agent avec recherche et base SQL (recommandé) ; `rag_v2` : recherche seule |
+
+**Réponse** (JSON) :
+
+| Champ | Type | Description |
+|---|---|---|
+| `reponse` | texte | Réponse rédigée en français |
+| `information_disponible` | booléen | `false` si les données ne permettent pas de répondre (refus) |
+| `sources` | liste | Résultats utilisés : `sql::1` (requête SQL), `joueur::…`, `reddit::…`, `dictionnaire::…` |
+| `outils_appeles` | liste | Outils appelés par l'agent (`interroger_base_statistiques`, `rechercher_documents`) |
+| `systeme` | texte | Système utilisé |
+| `latence_s` | nombre | Temps de traitement, en secondes |
+
+**Codes de retour** : `200` réponse ; `422` requête invalide (question vide, trop courte ou
+trop longue, système inconnu) ; `503` assistant indisponible (base, index ou clé manquants :
+consulter `/health`).
+
+### Exemples d'appel (curl)
+
+État du service :
+
+```bash
+curl http://localhost:8000/health
+```
+
+```json
+{"status": "ok", "version": "1.1.0", "base_sqlite": true, "index_vectoriel": true, "cle_mistral": true}
+```
+
+Question chiffrée (l'agent interroge la base SQL) :
+
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d "{\"question\": \"Quel joueur a le plus d'interceptions cette saison ?\"}"
+```
+
+```json
+{
+  "reponse": "Le joueur avec le plus d'interceptions en saison régulière est **Dyson Daniels** avec **228 interceptions**.",
+  "information_disponible": true,
+  "sources": ["sql::1"],
+  "outils_appeles": ["interroger_base_statistiques", "rechercher_documents"],
+  "systeme": "rag_sql",
+  "latence_s": 3.2
+}
+```
+
+Information absente des données (l'assistant refuse au lieu d'inventer) :
+
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Quel est le salaire de Stephen Curry ?"}'
+```
+
+```json
+{
+  "reponse": "Les données disponibles ne contiennent pas d'information sur les salaires des joueurs.",
+  "information_disponible": false,
+  "sources": [],
+  "outils_appeles": ["interroger_base_statistiques", "rechercher_documents"],
+  "systeme": "rag_sql",
+  "latence_s": 2.43
+}
+```
+
+Même question avec le système sans SQL :
+
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Que mesure le PIE ?", "system": "rag_v2"}'
+```
+
+### Avec Postman
+
+1. **Import** → **Link** → `http://localhost:8000/openapi.json` (API lancée) : Postman crée
+   la collection avec les deux routes.
+2. Pour `POST /ask` : onglet **Body** → **raw** → **JSON**, puis
+   `{"question": "Quels sont les 3 meilleurs marqueurs des Knicks ?"}`.
+
+Chaque appel est tracé dans Logfire (route, durée, puis toute la chaîne : choix de l'outil,
+requête SQL, recherche, appel à Mistral).
 
 ## Méthodologie
 
