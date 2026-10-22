@@ -1,6 +1,6 @@
 [project]
 name = "sportsee-llm-eval"
-version = "0.1.0"
+version = "1.1.0"
 description = "Évaluation et extension d'un assistant RAG pour SportSee"
 authors = [
     {name = "Maxime Barbier",email = "maximebarbier57@gmail.com"}
