@@ -10,9 +10,83 @@ avec Pydantic AI et trace toute la chaîne avec Pydantic Logfire.
 | 1. Évaluation structurée | Audit, `evaluate_ragas.py`, jeu de questions métier, pipeline de préparation (Pydantic, Pydantic AI), Logfire | ✅ |
 | 2. Données Excel et outil SQL | Base SQLite, `load_excel_to_db.py`, `sql_tool.py`, agent rag_sql | ✅ |
 | 3. Seconde évaluation | Comparaison prototype / rag_v2 / rag_sql, robustesse texte + chiffres, biais NL→SQL | ✅ |
+| Exposition | API REST (FastAPI) : `POST /ask`, `GET /health`, documentation `/docs` | ✅ |
 
 **Rapport de mise en place et d'évaluation** : [`docs/rapport.md`](docs/rapport.md)
 (PDF : `docs/rapport.pdf`, régénéré par `poetry run python docs/build_report.py`).
+
+## En bref, pour les non-spécialistes
+
+### Ce que fait l'assistant
+
+Un entraîneur, un analyste ou un préparateur physique pose une question **en français, comme il
+la poserait à un collègue**, et l'assistant répond en s'appuyant uniquement sur les données de
+SportSee :
+
+- les **statistiques de la saison régulière** des 569 joueurs et 30 équipes NBA (points, rebonds,
+  passes, pourcentages de réussite, indicateurs avancés) ;
+- des **discussions de fans** sur Reddit (avis, débats, tableaux partagés).
+
+Exemples de questions qu'il traite bien :
+
+| Question | Ce que l'assistant fait |
+|---|---|
+| « Quel joueur a le plus d'interceptions cette saison ? » | Interroge la base de statistiques : Dyson Daniels, 228 |
+| « Quels sont les 3 meilleurs marqueurs des Knicks ? » | Classe les joueurs de l'équipe dans la base |
+| « 3pt% de steph curry stp » | Comprend le surnom et l'abréviation : 39,7 % |
+| « Que pensent les fans de Julius Randle en playoffs ? » | Résume les commentaires Reddit, présentés comme des avis |
+| « Que mesure le PIE ? » | Donne la définition de la statistique |
+
+### Ce qu'il ne fait pas, et comment il le dit
+
+- **Il n'invente pas.** Si l'information n'est pas dans les données (un salaire, un vainqueur de
+  Finales, les statistiques d'un match précis), il répond qu'elle n'est pas disponible et l'indique
+  avec `information_disponible: false`.
+- **Pas de données par match.** Les données ne contiennent que des totaux de saison : les questions
+  sur « les 5 derniers matchs » ou « à domicile / à l'extérieur » ne peuvent pas être traitées.
+- **Il ne modifie rien.** Les données sont consultées en lecture seule ; une demande de
+  modification ou de suppression est refusée.
+- **Il cite ses sources.** Chaque réponse indique d'où vient l'information (`sql::1` : une
+  requête dans la base ; `reddit::…` : une discussion ; `joueur::…` : une fiche joueur).
+
+### Est-ce fiable ?
+
+Sur 32 questions représentatives du métier, l'assistant donne la bonne réponse **dans 93 % des
+cas** (contre 32 % pour le prototype de départ), avec une réponse en 3 secondes environ. Deux
+points de vigilance, détaillés dans le [rapport](docs/rapport.md) :
+
+- **Noms ambigus** : si deux joueurs portent le même nom (Jrue et Aaron Holiday), l'assistant est
+  censé signaler l'ambiguïté, mais il lui arrive encore de n'en citer qu'un. Préciser le prénom
+  évite le problème.
+- **Classements en pourcentage** : l'assistant écarte les joueurs ayant très peu joué et indique le
+  seuil appliqué (par exemple « au moins 200 lancers francs tentés »), car un 2 sur 2 ne veut rien dire.
+
+### Comment l'utiliser
+
+Une fois l'API lancée par l'équipe technique (section [API REST](#api-rest)), la page
+`http://localhost:8000/docs` permet de poser une question **sans rien installer ni programmer** :
+ouvrir `POST /ask`, cliquer sur **Try it out**, saisir la question, puis **Execute**.
+
+### Par où commencer selon votre profil
+
+| Vous êtes… | Lisez d'abord |
+|---|---|
+| Coach, analyste, responsable métier | Cette section, puis le résumé du [rapport](docs/rapport.md) |
+| Data scientist | [Méthodologie](#méthodologie), [Résultats](#résultats) et le [rapport](docs/rapport.md) |
+| Développeur, équipe technique | [Installation](#installation), [Utilisation](#utilisation), [API REST](#api-rest), [base de données](docs/database.md) |
+
+### Petit lexique
+
+| Terme | En clair |
+|---|---|
+| **LLM** | Modèle d'intelligence artificielle qui comprend et rédige du texte (ici, les modèles Mistral) |
+| **RAG** | Méthode qui consiste à chercher d'abord les documents utiles, puis à demander au LLM de répondre **à partir de ces documents** plutôt que de sa mémoire |
+| **Base SQL** | Tableau de données structuré que l'assistant interroge pour les chiffres exacts, classements et totaux |
+| **Agent** | LLM capable de choisir l'outil adapté à la question : la base de statistiques ou la recherche dans les discussions |
+| **Hallucination** | Réponse inventée présentée comme un fait ; c'est ce que l'assistant est conçu pour éviter |
+| **API** | Point d'accès qui permet à une application (ou à la page `/docs`) d'interroger l'assistant |
+| **RAGAS** | Outil d'évaluation qui note automatiquement la qualité des réponses |
+| **Logfire** | Outil de suivi qui enregistre chaque étape du traitement d'une question, pour diagnostiquer une erreur |
 
 ## Résultats
 
