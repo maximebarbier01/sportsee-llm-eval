@@ -2,8 +2,10 @@
 
 from dataclasses import dataclass, field
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
+from pydantic_ai.exceptions import ModelHTTPError
 
 from sportsee_llm_eval.api.main import API_VERSION, app, get_assistant_loader
 from sportsee_llm_eval.rag.rag_v2 import RagResponse
@@ -110,6 +112,50 @@ def test_ask_assistant_indisponible():
             r = c.post("/ask", json={"question": "Quel joueur a le plus de points ?"})
         assert r.status_code == 503
         assert "Base absente" in r.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+class FailingAssistant:
+    """Assistant dont l'appel à Mistral échoue (panne côté fournisseur)."""
+
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    def ask(self, question: str):
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    "error, code",
+    [
+        (
+            ModelHTTPError(503, "mistral-small-latest", body="Service unavailable."),
+            "503",
+        ),
+        (
+            httpx.HTTPStatusError(
+                "503",
+                request=httpx.Request(
+                    "POST", "https://api.mistral.ai/v1/chat/completions"
+                ),
+                response=httpx.Response(503),
+            ),
+            "503",
+        ),
+        (httpx.ConnectError("connexion refusée"), "réseau"),
+    ],
+)
+def test_ask_panne_mistral(error, code):
+    app.dependency_overrides[get_assistant_loader] = lambda: (
+        lambda system: FailingAssistant(error)
+    )
+    try:
+        with TestClient(app) as c:
+            r = c.post("/ask", json={"question": "Quel joueur a le plus de points ?"})
+        assert r.status_code == 503
+        assert "Service Mistral" in r.json()["detail"]
+        assert f"code {code}" in r.json()["detail"]
     finally:
         app.dependency_overrides.clear()
 

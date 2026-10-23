@@ -334,7 +334,7 @@ poetry run uvicorn sportsee_llm_eval.api.main:app --port 8000
 
 **Codes de retour** : `200` réponse ; `422` requête invalide (question vide, trop courte ou
 trop longue, système inconnu) ; `503` assistant indisponible (base, index ou clé manquants :
-consulter `/health`).
+consulter `/health` ; ou API Mistral momentanément en panne : réessayer quelques minutes plus tard).
 
 ### Exemples d'appel (curl)
 
