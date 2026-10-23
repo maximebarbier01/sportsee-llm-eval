@@ -11,6 +11,9 @@ Lancement :
 Les assistants (rag_sql par défaut, rag_v2 en option) sont chargés au premier appel puis
 gardés en mémoire : l'index FAISS et la base ne sont pas relus à chaque question. Chaque
 requête est tracée dans Logfire (route, durée, puis toute la chaîne RAG / SQL).
+
+Une panne de l'API Mistral (erreur HTTP du modèle de l'agent ou de l'outil SQL) est renvoyée
+en 503 avec un message explicite, plutôt qu'en erreur 500 avec la trace Python.
 """
 
 import os
@@ -19,9 +22,11 @@ from collections.abc import Callable
 from functools import lru_cache
 from typing import Annotated, Literal, Protocol
 
+import httpx
 import logfire
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from pydantic_ai.exceptions import ModelHTTPError
 
 from sportsee_llm_eval.observability.logfire_setup import setup_logfire
 from sportsee_llm_eval.preparation.build_index import INDEX_DIR
@@ -29,6 +34,8 @@ from sportsee_llm_eval.sql.schema import DB_PATH
 
 API_VERSION = "1.1.0"
 System = Literal["rag_sql", "rag_v2"]
+# erreurs de l'API Mistral : agent Pydantic AI, ou outil SQL / embeddings (clients httpx)
+MISTRAL_ERRORS = (ModelHTTPError, httpx.HTTPError)
 
 
 # --------------------------------------------------------------------------- schémas
@@ -96,6 +103,15 @@ def get_assistant_loader():
     return load_assistant
 
 
+def mistral_status(error: Exception) -> int | None:
+    """Code HTTP renvoyé par Mistral, s'il est connu (absent pour une erreur réseau)."""
+    if isinstance(error, ModelHTTPError):
+        return error.status_code
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code
+    return None
+
+
 def answer(assistant: Assistant, system: System, question: str) -> AskResponse:
     start = time.perf_counter()
     response, extra = assistant.ask(question)
@@ -149,7 +165,10 @@ def health() -> HealthResponse:
     responses={
         422: {"description": "Question invalide (vide, trop courte ou trop longue)"},
         503: {
-            "description": "Assistant indisponible (base, index ou clé Mistral manquants)"
+            "description": (
+                "Assistant indisponible : base, index ou clé Mistral manquants, "
+                "ou API Mistral momentanément en panne"
+            )
         },
     },
 )
@@ -166,4 +185,20 @@ def ask(
             status_code=503,
             detail=f"Assistant indisponible : {e}. Vérifier GET /health.",
         ) from e
-    return answer(assistant, request.system, request.question)
+    try:
+        return answer(assistant, request.system, request.question)
+    except MISTRAL_ERRORS as e:
+        status = mistral_status(e)
+        logfire.error(
+            "API Mistral en erreur",
+            systeme=request.system,
+            statut=status,
+            erreur=str(e),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Service Mistral momentanément indisponible (code {status or 'réseau'}). "
+                "Réessayer dans quelques minutes."
+            ),
+        ) from e
